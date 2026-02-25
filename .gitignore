@@ -1,0 +1,6 @@
+.venv/
+docs/
+GEMINI.md
+FiboZone.ipynb
+__pycache__/
+.python-version
