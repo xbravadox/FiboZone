@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import data_fetcher # Zakładając, że data_fetcher.py znajduje się w tym samym katalogu lub jest zainstalowany
 import time # Import modułu czasu
+from analysis_logic import is_uptrend
 
 # Importy dla modułów data_fetcher, analysis_logic, ai_models, utils zostaną dodane później,
 # gdy te moduły będą zawierały implementację.
@@ -47,10 +48,11 @@ def main():
                     st.dataframe(weekly_data.tail())
                 # Koniec expandera
 
-                # --- Krok 3: Analiza techniczna (Placeholder) ---
-                progress_text.text("Krok 3/4: Analiza techniczna...")
-                time.sleep(1) # Symulacja czasu analizy
-                progress_bar.progress(70) # Aktualizacja postępu
+                # --- Krok 3: Sprawdzanie trendu ---
+                progress_text.text("Krok 3/4: Sprawdzanie trendu...")
+                d1_trend_up, w1_trend_up = is_uptrend(ticker)
+                st.write(f"D1 - {'trend wzrostowy' if d1_trend_up else 'inny'} | W1 - {'trend wzrostowy' if w1_trend_up else 'inny'} | {'Trend wzrostowy potwierdzony' if (d1_trend_up and w1_trend_up) else 'Trend wzrostowy niepotwierdzony'}")
+                progress_bar.progress(70)
 
                 # --- Krok 4: Analiza AI (Placeholder) ---
                 progress_text.text("Krok 4/4: Analiza fundamentalna AI...")
