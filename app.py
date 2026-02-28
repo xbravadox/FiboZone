@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import data_fetcher # Zakładając, że data_fetcher.py znajduje się w tym samym katalogu lub jest zainstalowany
 import time # Import modułu czasu
-from analysis_logic import is_uptrend
+from analysis_logic import is_uptrend, identify_pivots, get_fibo_targets
 
 # Importy dla modułów data_fetcher, analysis_logic, ai_models, utils zostaną dodane później,
 # gdy te moduły będą zawierały implementację.
@@ -54,13 +54,41 @@ def main():
                 st.write(f"D1 - {'trend wzrostowy' if d1_trend_up else 'inny'} | W1 - {'trend wzrostowy' if w1_trend_up else 'inny'} | {'Trend wzrostowy potwierdzony' if (d1_trend_up and w1_trend_up) else 'Trend wzrostowy niepotwierdzony'}")
                 progress_bar.progress(70)
 
-                # --- Krok 4: Analiza AI (Placeholder) ---
-                progress_text.text("Krok 4/4: Analiza fundamentalna AI...")
+
+
+                # --- Krok 4: Identyfikacja struktury setupu ---
+                progress_text.text("Krok 4/5: Identyfikacja struktury setupu...")
+                progress_bar.progress(75)
+
+                with st.expander("Struktura setupu"):
+                    st.subheader("Punkty zwrotne (Pivots)")
+                    pivots_df = identify_pivots(weekly_data, daily_data)
+                    if not pivots_df.empty:
+
+
+                        st.subheader("Cele Fibonacciego")
+                        fibo_targets_dict = get_fibo_targets(pivots_df)
+
+                        if fibo_targets_dict.get('peak') is not None:
+                            st.write("Absolutny Szczyt:")
+                            # Wrap Series in DataFrame for display to ensure consistent column headers
+                            st.dataframe(pd.DataFrame([fibo_targets_dict['peak']]))
+                        else:
+                            st.warning("Nie znaleziono absolutnego szczytu.")
+
+                        if not fibo_targets_dict['troughs'].empty:
+                            st.write("Wybrane Dołki Fibonacciego:")
+                            st.dataframe(fibo_targets_dict['troughs'])
+                        else:
+                            st.warning("Nie znaleziono odpowiednich dołków Fibonacciego.")
+                    else:
+                        st.warning("Nie udało się zidentyfikować punktów zwrotnych.")
+
+                # --- Krok 5: Analiza AI (Placeholder) ---
+                progress_text.text("Krok 5/5: Analiza fundamentalna AI...") # Renumbered from 4/4 to 5/5
                 time.sleep(1) # Symulacja czasu analizy AI
                 progress_bar.progress(100) # Finalizacja postępu po pomyślnym zakończeniu
 
-                # --- Finalizacja --- 
-                progress_text.text("Analiza zakończona pomyślnie!")
 
             except (data_fetcher.TimeoutError, data_fetcher.NoDataError, data_fetcher.TickerNotFoundError) as e:
                 progress_text.text("Błąd podczas pobierania danych.")
@@ -71,7 +99,7 @@ def main():
                 st.error(f"Wystąpił nieoczekiwany błąd: {e}")
                 progress_bar.progress(0) # Ustawienie paska na 0 w przypadku błędu
             finally:
-                # Bloki `finally` nie będą już zawierać operacji czyszczących. 
+                # Bloki `finally` nie będą już zawierać operacji czyszczących.
                 # Pasek postępu i tekst pozostaną widoczne, wskazując status zakończenia.
                 pass
 
