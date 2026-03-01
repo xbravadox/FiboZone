@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import data_fetcher # Zakładając, że data_fetcher.py znajduje się w tym samym katalogu lub jest zainstalowany
 import time # Import modułu czasu
-from analysis_logic import is_uptrend, identify_pivots, get_fibo_targets
+from analysis_logic import is_uptrend, identify_pivots, get_fibo_targets, calculate_fibonacci_levels
 
 # Importy dla modułów data_fetcher, analysis_logic, ai_models, utils zostaną dodane później,
 # gdy te moduły będą zawierały implementację.
@@ -31,16 +31,14 @@ def main():
 
             try:
                 # --- Krok 1: Pobieranie danych D1 ---
-                progress_text.text("Krok 1/4: Pobieranie danych D1...")
+                progress_text.text("Krok 1/5: Pobieranie danych D1...")
                 with st.expander("Dane Yahoo"):
                     st.subheader("Dane Historyczne D1")
                     daily_data = data_fetcher.fetch_historical_data(ticker)
                     progress_bar.progress(20) # Aktualizacja postępu
-                    st.write("Ostatnie 5 wpisów:")
-                    st.dataframe(daily_data.tail())
 
                     # --- Krok 2: Konwersja danych na W1 ---
-                    progress_text.text("Krok 2/4: Konwersja danych na W1...")
+                    progress_text.text("Krok 2/5: Konwersja danych na W1...")
                     weekly_data = data_fetcher.convert_to_weekly(daily_data)
                     progress_bar.progress(40) # Aktualizacja postępu
                     st.subheader("Dane Historyczne W1")
@@ -49,43 +47,66 @@ def main():
                 # Koniec expandera
 
                 # --- Krok 3: Sprawdzanie trendu ---
-                progress_text.text("Krok 3/4: Sprawdzanie trendu...")
+                progress_text.text("Krok 3/5: Sprawdzanie trendu...")
                 d1_trend_up, w1_trend_up = is_uptrend(ticker)
                 st.write(f"D1 - {'trend wzrostowy' if d1_trend_up else 'inny'} | W1 - {'trend wzrostowy' if w1_trend_up else 'inny'} | {'Trend wzrostowy potwierdzony' if (d1_trend_up and w1_trend_up) else 'Trend wzrostowy niepotwierdzony'}")
-                progress_bar.progress(70)
+                progress_bar.progress(60)
 
 
 
-                # --- Krok 4: Identyfikacja struktury setupu ---
-                progress_text.text("Krok 4/5: Identyfikacja struktury setupu...")
-                progress_bar.progress(75)
+                # --- Krok 4: Analiza setupu i poziomów Fibonacciego ---
+                progress_text.text("Krok 4/5: Analiza setupu i poziomów Fibonacciego...")
+                progress_bar.progress(80)
 
                 with st.expander("Struktura setupu"):
                     st.subheader("Punkty zwrotne (Pivots)")
                     pivots_df = identify_pivots(weekly_data, daily_data)
                     if not pivots_df.empty:
+                        st.dataframe(pivots_df) # Display pivots for context
 
-
-                        st.subheader("Cele Fibonacciego")
+                        # --- Krok 4.1: Obliczanie i wyświetlanie poziomów Fibonacciego ---
                         fibo_targets_dict = get_fibo_targets(pivots_df)
 
+                        # Display Absolutny Szczyt and Wybrane Dołki for context
                         if fibo_targets_dict.get('peak') is not None:
-                            st.write("Absolutny Szczyt:")
-                            # Wrap Series in DataFrame for display to ensure consistent column headers
+                            st.subheader("Absolutny Szczyt (Odniesienie dla Fibonacciego)")
                             st.dataframe(pd.DataFrame([fibo_targets_dict['peak']]))
-                        else:
-                            st.warning("Nie znaleziono absolutnego szczytu.")
 
-                        if not fibo_targets_dict['troughs'].empty:
-                            st.write("Wybrane Dołki Fibonacciego:")
-                            st.dataframe(fibo_targets_dict['troughs'])
-                        else:
-                            st.warning("Nie znaleziono odpowiednich dołków Fibonacciego.")
-                    else:
+                            if not fibo_targets_dict['troughs'].empty:
+                                st.write("Wybrane Dołki Fibonacciego (podstawa obliczeń):")
+                                st.dataframe(fibo_targets_dict['troughs'])
+                        else: # Peak was not found
+                            st.warning("Nie znaleziono absolutnego szczytu do obliczenia poziomów Fibonacciego.")
+                    else: # No pivots found
                         st.warning("Nie udało się zidentyfikować punktów zwrotnych.")
 
+                # New expander for Fibonacci Levels, placed after "Struktura setupu"
+                if fibo_targets_dict.get('peak') is not None and not fibo_targets_dict['troughs'].empty:
+                    with st.expander("Zniesienia Fibonacciego"):
+                        peak_price = fibo_targets_dict['peak']['Price']
+                        all_fibo_levels = []
+
+                        for index, trough_row in fibo_targets_dict['troughs'].iterrows():
+                            trough_price = trough_row['Price']
+                            calculated_levels = calculate_fibonacci_levels(peak_price, trough_price)
+                            row_data = {
+                                'Trough Date': trough_row['Date'].strftime('%Y-%m-%d'),
+                                'Trough Price': trough_row['Price'],
+                                'Fibo 38.2%': calculated_levels.get('38.2%'),
+                                'Fibo 50%': calculated_levels.get('50%'),
+                                'Fibo 61.8%': calculated_levels.get('61.8%'),
+                                'Fibo 78.6%': calculated_levels.get('78.6%')
+                            }
+                            all_fibo_levels.append(row_data)
+
+                        fibo_levels_df = pd.DataFrame(all_fibo_levels)
+                        st.dataframe(fibo_levels_df)
+                elif fibo_targets_dict.get('peak') is not None and fibo_targets_dict['troughs'].empty: # Peak was found, but no troughs
+                    st.warning("Nie znaleziono odpowiednich dołków Fibonacciego do obliczenia poziomów.")
+                # else: # Peak was not found - handled within "Struktura setupu"
+
                 # --- Krok 5: Analiza AI (Placeholder) ---
-                progress_text.text("Krok 5/5: Analiza fundamentalna AI...") # Renumbered from 4/4 to 5/5
+                progress_text.text("Krok 5/5: Analiza fundamentalna AI...") # This remains 5/5
                 time.sleep(1) # Symulacja czasu analizy AI
                 progress_bar.progress(100) # Finalizacja postępu po pomyślnym zakończeniu
 
