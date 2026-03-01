@@ -58,6 +58,7 @@ def is_uptrend(ticker: str) -> bool:
 
     return d1_ok, w1_ok
 
+
 def get_precise_point(approx_date, search_type, df_d1):
     '''Doprecyzowuje datę i cenę szczytu/dołka na podstawie danych dziennych.
 
@@ -84,6 +85,7 @@ def get_precise_point(approx_date, search_type, df_d1):
         precise_date = daily_slice['Low'].idxmin()
         precise_price = round(float(daily_slice.loc[precise_date, 'Low']), 2)
     return precise_date, precise_price
+
 
 def identify_pivots(data_w1: pd.DataFrame, data_d1: pd.DataFrame, distance: int = 2, prominence_pct: float = 0.03) -> pd.DataFrame:
     '''
@@ -116,19 +118,23 @@ def identify_pivots(data_w1: pd.DataFrame, data_d1: pd.DataFrame, distance: int 
 
     # 1. Znajdź punkty na W1 (tylko dołki nas tu realnie interesują jako baza)
     # prominence_pct np. 0.05 odpowiada ok. 5% ruchowi po zlogarytmowaniu
-    peaks_idx, _ = find_peaks(log_high, distance=distance, prominence=prominence_pct)
-    troughs_idx, _ = find_peaks(-log_low, distance=distance, prominence=prominence_pct)
+    peaks_idx, _ = find_peaks(
+        log_high, distance=distance, prominence=prominence_pct)
+    troughs_idx, _ = find_peaks(-log_low,
+                                distance=distance, prominence=prominence_pct)
 
     pivots = []
 
     # Mapowanie wszystkich znalezionych punktów
     for idx in peaks_idx:
         d, p = get_precise_point(df_w1.index[idx], 'Peak', df_d1)
-        if p: pivots.append({'Date': d, 'Price': p, 'Type': 'Peak'})
+        if p:
+            pivots.append({'Date': d, 'Price': p, 'Type': 'Peak'})
 
     for idx in troughs_idx:
         d, p = get_precise_point(df_w1.index[idx], 'Trough', df_d1)
-        if p: pivots.append({'Date': d, 'Price': p, 'Type': 'Trough'})
+        if p:
+            pivots.append({'Date': d, 'Price': p, 'Type': 'Trough'})
 
     # 2. WYMUSZENIE ABSOLUTNEGO SZCZYTU (Zielona strzałka)
     # To jest nasz nadrzędny punkt odniesienia.
@@ -136,21 +142,26 @@ def identify_pivots(data_w1: pd.DataFrame, data_d1: pd.DataFrame, distance: int 
     abs_max_price = round(float(df_d1['High'].max()), 2)
 
     # Dodajemy go jako Peak (jeśli już jest o tej samej dacie, drop_duplicates go wyczyści)
-    pivots.append({'Date': abs_max_date, 'Price': abs_max_price, 'Type': 'Peak'})
+    pivots.append(
+        {'Date': abs_max_date, 'Price': abs_max_price, 'Type': 'Peak'})
 
-    pivots_df = pd.DataFrame(pivots).sort_values('Date').drop_duplicates(subset=['Date']).reset_index(drop=True)
+    pivots_df = pd.DataFrame(pivots).sort_values(
+        'Date').drop_duplicates(subset=['Date']).reset_index(drop=True)
 
     # Etykietowanie trendu
     lp, lt = None, None
     for i, row in pivots_df.iterrows():
         if row['Type'] == 'Peak':
-            pivots_df.at[i, 'Label'] = ('HH' if row['Price'] > lp else 'LH') if lp else 'High'
+            pivots_df.at[i, 'Label'] = (
+                'HH' if row['Price'] > lp else 'LH') if lp else 'High'
             lp = row['Price']
         else:
-            pivots_df.at[i, 'Label'] = ('HL' if row['Price'] > lt else 'LL') if lt else 'Low'
+            pivots_df.at[i, 'Label'] = (
+                'HL' if row['Price'] > lt else 'LL') if lt else 'Low'
             lt = row['Price']
 
     return pivots_df
+
 
 def get_fibo_targets(pivots_df: pd.DataFrame, min_dist_pct: float = 0.10, min_time_days: int = 60) -> dict:
     '''
@@ -164,7 +175,7 @@ def get_fibo_targets(pivots_df: pd.DataFrame, min_dist_pct: float = 0.10, min_ti
 
     Returns:
         dict: Słownik zawierający 'peak' (pd.Series) dla absolutnego szczytu
-              oraz 'troughs' (pd.DataFrame) dla wybranych dołków Fibonacciego.
+                oraz 'troughs' (pd.DataFrame) dla wybranych dołków Fibonacciego.
     '''
     if pivots_df.empty:
         return {'peak': None, 'troughs': pd.DataFrame()}
@@ -179,8 +190,9 @@ def get_fibo_targets(pivots_df: pd.DataFrame, min_dist_pct: float = 0.10, min_ti
 
     # 2. Szukamy dołków tylko przed datą tego szczytu, idąc wstecz, z limitem 3 lat wstecz
     three_years_ago = absolute_peak['Date'] - pd.DateOffset(years=3)
-    points_before = pivots_df[(pivots_df['Date'] < absolute_peak['Date']) &
-                               (pivots_df['Date'] >= three_years_ago)].sort_values('Date', ascending=False)
+    points_before = pivots_df[
+        (pivots_df['Date'] < absolute_peak['Date']) &
+        (pivots_df['Date'] >= three_years_ago)].sort_values('Date', ascending=False)
 
     selected_troughs = []
     current_min_price = float('inf')
@@ -194,7 +206,8 @@ def get_fibo_targets(pivots_df: pd.DataFrame, min_dist_pct: float = 0.10, min_ti
                 is_duplicate = False
                 if selected_troughs:
                     last_added = selected_troughs[-1]
-                    price_dist = abs(row['Price'] - last_added['Price']) / last_added['Price']
+                    price_dist = abs(
+                        row['Price'] - last_added['Price']) / last_added['Price']
                     time_dist_days = (last_added['Date'] - row['Date']).days
 
                     if price_dist < min_dist_pct or time_dist_days < min_time_days:
@@ -211,3 +224,36 @@ def get_fibo_targets(pivots_df: pd.DataFrame, min_dist_pct: float = 0.10, min_ti
         'peak': absolute_peak,
         'troughs': pd.DataFrame(selected_troughs).sort_values('Date')
     }
+
+
+def calculate_fibonacci_levels(peak_price: float, trough_price: float) -> dict:
+    '''
+    Oblicza standardowe poziomy zniesienia Fibonacciego.
+
+    Args:
+        peak_price (float): Cena szczytu.
+        trough_price (float): Cena dołka.
+
+    Returns:
+        dict: Słownik zawierający obliczone poziomy Fibonacciego.
+    '''
+    fib_levels = {
+        '38.2%': 0.382,
+        '50%': 0.50,
+        '61.8%': 0.618,
+        '78.6%': 0.786
+    }
+
+    calculated_levels = {}
+    price_range = peak_price - trough_price
+
+    for label, level in fib_levels.items():
+        if peak_price > trough_price:  # Uptrend: retracement from peak towards trough
+            fib_value = peak_price - (price_range * level)
+        # Downtrend: retracement from trough towards peak (or extension below trough)
+        else:
+            # This calculates retracement from trough to peak
+            fib_value = trough_price + (abs(price_range) * level)
+        calculated_levels[label] = round(fib_value, 2)
+
+    return calculated_levels
