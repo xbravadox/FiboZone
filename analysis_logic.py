@@ -257,3 +257,128 @@ def calculate_fibonacci_levels(peak_price: float, trough_price: float) -> dict:
         calculated_levels[label] = round(fib_value, 2)
 
     return calculated_levels
+
+
+def find_fibonacci_confluences(peak_price: float, troughs_df: pd.DataFrame) -> list:
+    '''
+    Wyszukuje konfluencje Fibonacciego, gdzie co najmniej dwa poziomy Fibonacciego
+    pochodzące z różnych dołków znajdują się w strefie 0-0.2% od siebie.
+    Dodaje informację o sumie punktów dla każdej konfluencji.
+
+    Args:
+        peak_price (float): Cena szczytu, od którego obliczane są poziomy Fibonacciego.
+        troughs_df (pd.DataFrame): DataFrame zawierający dołki, z których obliczane są poziomy Fibonacciego.
+                                    Oczekiwane kolumny to 'Date' i 'Price'.
+
+    Returns:
+        list: Lista konfluencji. Każda konfluencja to słownik zawierający:
+              - 'levels': Lista poziomów Fibonacciego tworzących konfluencję.
+              - 'total_score': Suma punktów dla tej konfluencji.
+    '''
+    if troughs_df.empty or len(troughs_df) < 2:  # Potrzebujemy przynajmniej dwóch dołków do konfluencji
+        return []
+
+    all_fib_levels = []
+
+    # Oblicz poziomy Fibonacciego dla każdego dołka
+    for _, trough_row in troughs_df.iterrows():
+        trough_date = trough_row['Date']
+        trough_price = trough_row['Price']
+
+        # Użyj istniejącej funkcji calculate_fibonacci_levels
+        fib_levels_for_trough = calculate_fibonacci_levels(
+            peak_price, trough_price)
+
+        for label, value in fib_levels_for_trough.items():
+            all_fib_levels.append({
+                'level_value': value,
+                'label': label,
+                'trough_date': trough_date,
+                'trough_price': trough_price,
+                'peak_price': peak_price
+            })
+
+    confluences = []
+    # Sortujemy wszystkie poziomy Fibonacciego po wartości, aby ułatwić wyszukiwanie bliskich punktów
+    all_fib_levels.sort(key=lambda x: x['level_value'])
+
+    # Wyszukaj konfluencje
+    # Iterujemy po każdym poziomie Fibonacciego
+    for i in range(len(all_fib_levels)):
+        current_level = all_fib_levels[i]
+        # Tworzymy grupę konfluencji dla bieżącego poziomu
+        current_confluence_group = [current_level]
+
+        # Porównujemy bieżący poziom z kolejnymi poziomami
+        for j in range(i + 1, len(all_fib_levels)):
+            next_level = all_fib_levels[j]
+
+            # Upewnij się, że poziomy pochodzą z różnych dołków
+            if current_level['trough_date'] == next_level['trough_date']:
+                continue
+
+            # Sprawdź warunek konfluencji: różnica do 0.2% względem niższego poziomu
+            min_val = min(
+                current_level['level_value'],
+                next_level['level_value']
+            )
+            max_val = max(
+                current_level['level_value'],
+                next_level['level_value']
+            )
+
+            if min_val == 0:  # Unikaj dzielenia przez zero
+                continue
+
+            percentage_diff = (max_val - min_val) / min_val
+
+            # Jeśli różnica mieści się w zakresie do 0.2% (i jest większa od 0, by uniknąć identycznych poziomów z różnych dołków)
+            if 0 < percentage_diff <= 0.002:
+                current_confluence_group.append(next_level)
+            # Jeśli następny poziom jest zbyt daleko, aby tworzyć konfluencję z bieżącą grupą,
+            # możemy przerwać wewnętrzną pętlę, ponieważ lista jest posortowana.
+            elif percentage_diff > 0.002: # Changed from 0.015 to 0.002
+                break
+
+        # Jeśli znaleziono konfluencję (co najmniej dwa poziomy z różnych dołków)
+        # i upewnij się, że nie jest to ten sam poziom wielokrotnie dodany
+        if len(current_confluence_group) >= 2:
+            # Sprawdź, czy w grupie są poziomy z co najmniej dwóch różnych dołków
+            unique_troughs = set(
+                item['trough_date'] for item in current_confluence_group)
+            if len(unique_troughs) >= 2:
+                # Sprawdź, czy ta konfluencja nie została już dodana (aby unikać duplikatów)
+                # Można to zrobić poprzez posortowanie poziomów wewnątrz konfluencji i przekształcenie na krotki
+                sorted_group_items = [frozenset(level.items()) for level in current_confluence_group]
+                sorted_group_tuple = tuple(sorted(sorted_group_items))
+                
+                is_duplicate = False
+                for existing_confluence in confluences:
+                    existing_levels = existing_confluence.get('levels', [])
+                    existing_group_items = [frozenset(level.items()) for level in existing_levels]
+                    existing_group_tuple = tuple(sorted(existing_group_items))
+                    if sorted_group_tuple == existing_group_tuple:
+                        is_duplicate = True
+                        break
+
+                if not is_duplicate:
+                    # Oblicz sumę punktów dla tej konfluencji
+                    score_mapping = {
+                        '61.8%': 3,
+                        '78.6%': 3,
+                        '50%': 2,
+                        '38.2%': 2
+                    }
+                    total_score = 0
+                    for level_data in current_confluence_group:
+                        label = level_data.get('label')
+                        if label in score_mapping:
+                            total_score += score_mapping[label]
+                    
+                    # Dodaj konfluencję z jej poziomami i obliczoną sumą punktów
+                    confluences.append({
+                        'levels': current_confluence_group,
+                        'total_score': total_score
+                    })
+
+    return confluences
