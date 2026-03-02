@@ -55,6 +55,7 @@ def main():
                         st.dataframe(pivots_df) # Display pivots for context
                         fibo_targets_dict = get_fibo_targets(pivots_df)
 
+                        # Display Absolutny Szczyt and Wybrane Dołki for context
                         if fibo_targets_dict.get('peak') is not None:
                             absolute_peak_info = fibo_targets_dict['peak']
                             peak_price = absolute_peak_info['Price']
