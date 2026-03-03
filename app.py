@@ -1,20 +1,18 @@
 import streamlit as st
 import pandas as pd
-import data_fetcher # Zakładając, że data_fetcher.py znajduje się w tym samym katalogu lub jest zainstalowany
-import time # Import modułu czasu
-from analysis_logic import is_uptrend, identify_pivots, get_fibo_targets, calculate_fibonacci_levels, find_fibonacci_confluences # Dodano find_fibonacci_confluences
+import data_fetcher
+import analysis_logic
+import time
 
-# Importy dla modułów data_fetcher, analysis_logic, ai_models, utils zostaną dodane później,
-# gdy te moduły będą zawierały implementację.
+from data_fetcher import TickerNotFoundError, NoDataError, TimeoutError
+from analysis_logic import is_uptrend, identify_pivots, get_fibo_targets, calculate_fibonacci_levels, find_fibonacci_confluences, check_last_d1_low_against_confluences
 
 def main():
     st.set_page_config(layout="wide")
 
     # --- Sidebar ---
     st.sidebar.title("Ustawienia Analizy")
-    # Pole tekstowe do wprowadzania tickera akcji w sidebarze
     ticker = st.sidebar.text_input("Wprowadź ticker akcji zgodny z Yahoo Finance", "PKO.WA")
-    # Można tutaj dodać inne opcje konfiguracyjne w przyszłości
 
     # --- Główna część aplikacji ---
     st.title("FiboZone - Analiza Akcji Giełdowych")
@@ -22,12 +20,10 @@ def main():
     FiboZone to system analizy techniczno-fundamentalnej akcji giełdowych, który automatycznie wyznacza strefy konfluencji Fibonacciego i sprawdza, czy cena aktualnie się w nich znajduje.
     """)
 
-    # Przycisk do uruchamiania analizy
     if st.button("Analizuj"):
         if ticker:
-            # Inicjalizacja paska postępu i tekstu
             progress_bar = st.progress(0)
-            progress_text = st.empty() # Ten placeholder będzie przechowywał komunikaty tekstowe
+            progress_text = st.empty()
 
             try:
                 # --- Krok 1/5: Pobieranie i przetwarzanie danych ---
@@ -39,20 +35,22 @@ def main():
                 # --- Krok 2/5: Weryfikacja trendu ---
                 progress_text.text("Krok 2/5: Weryfikacja trendu...")
                 d1_trend_up, w1_trend_up = is_uptrend(ticker)
-                st.write(f"D1 - {'trend wzrostowy' if d1_trend_up else 'inny'} | W1 - {'trend wzrostowy' if w1_trend_up else 'inny'} | {'Trend wzrostowy potwierdzony' if (d1_trend_up and w1_trend_up) else 'Trend wzrostowy niepotwierdzony'}")
+                trend_status = 'Trend wzrostowy potwierdzony' if (d1_trend_up and w1_trend_up) else 'Trend wzrostowy niepotwierdzony'
+                st.write(f"D1 - {'trend wzrostowy' if d1_trend_up else 'inny'} | W1 - {'trend wzrostowy' if w1_trend_up else 'inny'} | {trend_status}")
                 progress_bar.progress(30)
 
                 # --- Krok 3/5: Analiza struktury (Pivots) ---
                 progress_text.text("Krok 3/5: Analiza struktury (Pivots)...")
-                fibo_targets_dict = None # Initialize fibo_targets_dict
-                peak_price = None # Initialize peak_price
-                absolute_peak_info = None # Initialize absolute_peak_info
+                fibo_targets_dict = None
+                peak_price = None
+                absolute_peak_info = None
+                confluences_results = []
 
                 with st.expander("Struktura setupu"):
                     st.subheader("Punkty zwrotne (Pivots)")
                     pivots_df = identify_pivots(weekly_data, daily_data)
                     if not pivots_df.empty:
-                        st.dataframe(pivots_df) # Display pivots for context
+                        st.dataframe(pivots_df)
                         fibo_targets_dict = get_fibo_targets(pivots_df)
 
                         if fibo_targets_dict.get('peak') is not None:
@@ -64,15 +62,16 @@ def main():
                             if not fibo_targets_dict['troughs'].empty:
                                 st.write("Wybrane Dołki Fibonacciego (podstawa obliczeń):")
                                 st.dataframe(fibo_targets_dict['troughs'])
-                        else: # Peak was not found
+                            else:
+                                st.warning("Nie znaleziono odpowiednich dołków Fibonacciego do obliczenia poziomów.")
+                        else:
                             st.warning("Nie znaleziono absolutnego szczytu do obliczenia poziomów Fibonacciego.")
-                    else: # No pivots found
+                    else:
                         st.warning("Nie udało się zidentyfikować punktów zwrotnych.")
                 progress_bar.progress(50)
 
                 # --- Krok 4/5: Analiza poziomów Fibonacciego i Konfluencji ---
                 if fibo_targets_dict and absolute_peak_info is not None and not fibo_targets_dict['troughs'].empty:
-                    # Zniesienia Fibonacciego
                     with st.expander("Zniesienia Fibonacciego"):
                         all_fibo_levels_for_display = []
                         for index, trough_row in fibo_targets_dict['troughs'].iterrows():
@@ -90,9 +89,8 @@ def main():
                         fibo_levels_df = pd.DataFrame(all_fibo_levels_for_display)
                         st.dataframe(fibo_levels_df)
 
-                    # Konfluencje Fibonacciego
-                    confluences_results = find_fibonacci_confluences(peak_price, fibo_targets_dict['troughs'])
                     with st.expander("Konfluencje"):
+                        confluences_results = find_fibonacci_confluences(peak_price, fibo_targets_dict['troughs'])
                         if confluences_results:
                             st.subheader("Znalezione Konfluencje Fibonacciego:")
                             confluence_details_list = []
@@ -114,24 +112,67 @@ def main():
                                 st.dataframe(confluences_df)
                             else:
                                 st.warning("Nie znaleziono konfluencji Fibonacciego.")
-                elif fibo_targets_dict and absolute_peak_info is not None and fibo_targets_dict['troughs'].empty: # Peak was found, but no troughs
-                    st.warning("Nie znaleziono odpowiednich dołków Fibonacciego do obliczenia poziomów.")
-                # else: # Peak was not found - handled within "Struktura setupu"
-                progress_bar.progress(70) # Adjusted progress for Fibo levels and Confluences
+                        else:
+                            st.warning("Nie znaleziono konfluencji Fibonacciego.")
+
+                # --- Analiza ostatniej świecy D1 (w osobnym expanderze) ---
+                with st.expander("Analiza ostatniej świecy D1"):
+                    if not daily_data.empty:
+                        # Wywołanie funkcji do sprawdzenia Low ostatniej świecy
+                        signal_present, signal_details = check_last_d1_low_against_confluences(daily_data, confluences_results)
+
+                        if signal_present:
+                            st.success(f"✅ Sygnał: Low ostatniej świecy D1 ({signal_details['last_d1_low']:.2f}) znajduje się w strefie konfluencji.")
+                            st.markdown(f"""
+                            **Szczegóły sygnału:**
+                            - Strefa konfluencji: od {signal_details['confluence_min_level']:.2f} do {signal_details['confluence_max_level']:.2f}
+                            - Środek strefy: {signal_details['confluence_center']:.2f}
+                            - Górna granica sygnału (+5% od środka): {signal_details['upper_signal_limit']:.2f}
+                            """)
+                        else:
+                            # Wyświetlanie kontekstu, nawet jeśli sygnału nie ma
+                            st.info("ℹ️ Low ostatniej świecy D1 nie znajduje się w zdefiniowanej strefie sygnału konfluencji.")
+                            if confluences_results: # Sprawdź, czy były jakieś konfluencje do porównania
+                                # Pobierz dane o ostatnim Low świecy
+                                last_d1_low_val = daily_data['Low'].iloc[-1] if not daily_data.empty else 'N/A'
+                                st.markdown(f"""
+                                **Aktualne dane:**
+                                - Low ostatniej świecy D1: {last_d1_low_val:.2f}
+                                """)
+                                # Pokaż zakresy pierwszej znalezionej konfluencji dla kontekstu
+                                first_conf = confluences_results[0]
+                                if 'levels' in first_conf and first_conf['levels']:
+                                    min_lvl = min(item['level_value'] for item in first_conf['levels'])
+                                    max_lvl = max(item['level_value'] for item in first_conf['levels'])
+                                    center = (min_lvl + max_lvl) / 2
+                                    upper_lim = center * 1.05
+                                    st.markdown(f"""
+                                    **Kontekst (pierwsza konfluencja):**
+                                    - Strefa konfluencji: od {min_lvl:.2f} do {max_lvl:.2f}
+                                    - Środek strefy: {center:.2f}
+                                    - Górna granica sygnału (+5% od środka): {upper_lim:.2f}
+                                    """)
+                            else:
+                                st.warning("Nie znaleziono żadnych konfluencji do porównania.")
+                    else:
+                        st.warning("Brak danych dziennych do analizy ostatniej świecy.")
+                # --- Koniec sekcji analizy świecy D1 ---
+
+                progress_bar.progress(70)
 
                 # --- Krok 5/5: Analiza zakończona ---
                 progress_text.text("Krok 5/5: Analiza zakończona.")
-                time.sleep(1) # Daje czas na przeczytanie komunikatu
-                progress_bar.progress(100) # Finalizacja paska postępu
+                time.sleep(1)
+                progress_bar.progress(100)
 
-            except (data_fetcher.TimeoutError, data_fetcher.NoDataError, data_fetcher.TickerNotFoundError) as e:
+            except (TimeoutError, NoDataError, TickerNotFoundError) as e:
                 progress_text.text("Błąd podczas pobierania danych.")
                 st.error(f"Błąd pobierania danych: {e}")
-                progress_bar.progress(0) # Ustawienie paska na 0 w przypadku błędu
+                progress_bar.progress(0)
             except Exception as e:
                 progress_text.text("Nieoczekiwany błąd.")
                 st.error(f"Wystąpił nieoczekiwany błąd: {e}")
-                progress_bar.progress(0) # Ustawienie paska na 0 w przypadku błędu
+                progress_bar.progress(0)
             finally:
                 pass
 
