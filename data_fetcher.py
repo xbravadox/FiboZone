@@ -11,6 +11,10 @@ class NoDataError(Exception):
     pass
 
 
+class TimeoutError(Exception):  # Dodana definicja TimeoutError
+    pass
+
+
 def fetch_historical_data(ticker: str) -> pd.DataFrame:
     '''Pobiera dane historyczne dla podanego tickera z Yahoo Finance.
 

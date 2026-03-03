@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+import streamlit as st 
 from scipy.signal import find_peaks
 
 
@@ -337,7 +337,7 @@ def find_fibonacci_confluences(peak_price: float, troughs_df: pd.DataFrame) -> l
                 current_confluence_group.append(next_level)
             # Jeśli następny poziom jest zbyt daleko, aby tworzyć konfluencję z bieżącą grupą,
             # możemy przerwać wewnętrzną pętlę, ponieważ lista jest posortowana.
-            elif percentage_diff > 0.002: # Changed from 0.015 to 0.002
+            elif percentage_diff > 0.002:  # Changed from 0.015 to 0.002
                 break
 
         # Jeśli znaleziono konfluencję (co najmniej dwa poziomy z różnych dołków)
@@ -349,13 +349,15 @@ def find_fibonacci_confluences(peak_price: float, troughs_df: pd.DataFrame) -> l
             if len(unique_troughs) >= 2:
                 # Sprawdź, czy ta konfluencja nie została już dodana (aby unikać duplikatów)
                 # Można to zrobić poprzez posortowanie poziomów wewnątrz konfluencji i przekształcenie na krotki
-                sorted_group_items = [frozenset(level.items()) for level in current_confluence_group]
+                sorted_group_items = [
+                    frozenset(level.items()) for level in current_confluence_group]
                 sorted_group_tuple = tuple(sorted(sorted_group_items))
-                
+
                 is_duplicate = False
                 for existing_confluence in confluences:
                     existing_levels = existing_confluence.get('levels', [])
-                    existing_group_items = [frozenset(level.items()) for level in existing_levels]
+                    existing_group_items = [
+                        frozenset(level.items()) for level in existing_levels]
                     existing_group_tuple = tuple(sorted(existing_group_items))
                     if sorted_group_tuple == existing_group_tuple:
                         is_duplicate = True
@@ -374,7 +376,7 @@ def find_fibonacci_confluences(peak_price: float, troughs_df: pd.DataFrame) -> l
                         label = level_data.get('label')
                         if label in score_mapping:
                             total_score += score_mapping[label]
-                    
+
                     # Dodaj konfluencję z jej poziomami i obliczoną sumą punktów
                     confluences.append({
                         'levels': current_confluence_group,
@@ -382,3 +384,83 @@ def find_fibonacci_confluences(peak_price: float, troughs_df: pd.DataFrame) -> l
                     })
 
     return confluences
+
+
+def check_last_d1_low_against_confluences(df_d1: pd.DataFrame, confluences: list) -> tuple:
+    '''
+    Sprawdza położenie Low ostatniej świecy D1 względem środka strefy konfluencji.
+
+    Args:
+        df_d1 (pd.DataFrame): DataFrame zawierający dane dzienne z kolumną 'Low'.
+        confluences (list): Lista konfluencji Fibonacciego zwrócona przez `find_fibonacci_confluences`.
+
+    Returns:
+        tuple: (True, dict) jeśli Low ostatniej świecy D1 znajduje się w strefie sygnału konfluencji,
+               w przeciwnym razie (False, None).
+               Dict zawiera szczegóły znalezionego sygnału.
+    '''
+    # Usunięto wszystkie linie st.write z tej funkcji
+
+    if df_d1.empty or 'Low' not in df_d1.columns:
+        # st.error("Brak danych D1 lub brak kolumny 'Low'.") # Usunięto interakcję z UI
+        return False, None
+
+    # Sprawdzenie typu danych w kolumnie 'Low' przed konwersją
+    if not pd.api.types.is_numeric_dtype(df_d1['Low']):
+        # st.error(f"Kolumna 'Low' w df_d1 nie jest typu numerycznego. Typ: {df_d1['Low'].dtype}") # Usunięto interakcję z UI
+        return False, None
+
+    last_d1_low = float(df_d1['Low'].iloc[-1])
+
+    for conf_group in confluences:
+        # Sprawdzenie, czy conf_group jest słownikiem i zawiera klucz 'levels'
+        if not isinstance(conf_group, dict) or 'levels' not in conf_group:
+            # st.warning(f"Nieprawidłowy format grupy konfluencji: {conf_group}. Pomijanie.") # Usunięto interakcję z UI
+            continue
+
+        levels_in_group = conf_group.get('levels', [])
+        if not levels_in_group:
+            # st.warning("Grupa konfluencji bez poziomów. Pomijanie.") # Usunięto interakcję z UI
+            continue
+
+        # Sprawdzenie, czy wszystkie elementy w levels_in_group są słownikami i mają 'level_value'
+        valid_levels = []
+        for item in levels_in_group:
+            if isinstance(item, dict) and 'level_value' in item:
+                # Dodatkowe sprawdzenie typu 'level_value'
+                if isinstance(item['level_value'], (int, float)):
+                    valid_levels.append(item)
+                else:
+                    # st.warning(f"Nieprawidłowy typ danych dla 'level_value' w elemencie: {item}. Oczekiwano liczby, otrzymano {type(item['level_value'])}. Pomijanie.") # Usunięto interakcję z UI
+                    pass # Pomijamy element z nieprawidłowym typem
+            else:
+                # st.warning(f"Nieprawidłowy element w 'levels' lub brak klucza 'level_value': {item}. Pomijanie.") # Usunięto interakcję z UI
+                pass # Pomijamy element o nieprawidłowej strukturze
+
+        if not valid_levels:
+            # st.warning("Brak poprawnych poziomów w grupie konfluencji. Pomijanie.") # Usunięto interakcję z UI
+            continue
+
+        # Upewnij się, że obliczenia min/max są bezpieczne
+        try:
+            min_conf_level = min(item['level_value'] for item in valid_levels)
+            max_conf_level = max(item['level_value'] for item in valid_levels)
+        except ValueError:
+            # st.error("Błąd podczas obliczania min/max poziomów konfluencji.") # Usunięto interakcję z UI
+            continue # Przejdź do następnej grupy konfluencji
+
+        confluence_center = (min_conf_level + max_conf_level) / 2
+        upper_signal_limit = confluence_center * 1.05
+
+        if confluence_center <= last_d1_low <= upper_signal_limit:
+            signal_details = {
+                'last_d1_low': last_d1_low,
+                'confluence_min_level': round(min_conf_level, 2),
+                'confluence_max_level': round(max_conf_level, 2),
+                'confluence_center': round(confluence_center, 2),
+                'upper_signal_limit': round(upper_signal_limit, 2),
+                'confluence_details': valid_levels
+            }
+            return True, signal_details
+
+    return False, None
