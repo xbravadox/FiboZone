@@ -3,6 +3,7 @@ import pandas as pd
 import data_fetcher
 import analysis_logic
 import time
+import ai_models
 
 from data_fetcher import TickerNotFoundError, NoDataError, TimeoutError
 from analysis_logic import is_uptrend, identify_pivots, get_fibo_targets, calculate_fibonacci_levels, find_fibonacci_confluences, check_last_d1_low_against_confluences
@@ -10,11 +11,9 @@ from analysis_logic import is_uptrend, identify_pivots, get_fibo_targets, calcul
 def main():
     st.set_page_config(layout="wide")
 
-    # --- Sidebar ---
     st.sidebar.title("Ustawienia Analizy")
     ticker = st.sidebar.text_input("Wprowadź ticker akcji zgodny z Yahoo Finance", "PKO.WA")
 
-    # --- Główna część aplikacji ---
     st.title("FiboZone - Analiza Akcji Giełdowych")
     st.markdown("""
     FiboZone to system analizy techniczno-fundamentalnej akcji giełdowych, który automatycznie wyznacza strefy konfluencji Fibonacciego i sprawdza, czy cena aktualnie się w nich znajduje.
@@ -26,20 +25,17 @@ def main():
             progress_text = st.empty()
 
             try:
-                # --- Krok 1/5: Pobieranie i przetwarzanie danych ---
                 progress_text.text("Krok 1/5: Pobieranie i przetwarzanie danych...")
                 daily_data = data_fetcher.fetch_historical_data(ticker)
                 weekly_data = data_fetcher.convert_to_weekly(daily_data)
                 progress_bar.progress(20)
 
-                # --- Krok 2/5: Weryfikacja trendu ---
                 progress_text.text("Krok 2/5: Weryfikacja trendu...")
                 d1_trend_up, w1_trend_up = is_uptrend(ticker)
                 trend_status = 'Trend wzrostowy potwierdzony' if (d1_trend_up and w1_trend_up) else 'Trend wzrostowy niepotwierdzony'
                 st.write(f"D1 - {'trend wzrostowy' if d1_trend_up else 'inny'} | W1 - {'trend wzrostowy' if w1_trend_up else 'inny'} | {trend_status}")
                 progress_bar.progress(30)
 
-                # --- Krok 3/5: Analiza struktury (Pivots) ---
                 progress_text.text("Krok 3/5: Analiza struktury (Pivots)...")
                 fibo_targets_dict = None
                 peak_price = None
@@ -70,7 +66,6 @@ def main():
                         st.warning("Nie udało się zidentyfikować punktów zwrotnych.")
                 progress_bar.progress(50)
 
-                # --- Krok 4/5: Analiza poziomów Fibonacciego i Konfluencji ---
                 if fibo_targets_dict and absolute_peak_info is not None and not fibo_targets_dict['troughs'].empty:
                     with st.expander("Zniesienia Fibonacciego"):
                         all_fibo_levels_for_display = []
@@ -115,10 +110,8 @@ def main():
                         else:
                             st.warning("Nie znaleziono konfluencji Fibonacciego.")
 
-                # --- Analiza ostatniej świecy D1 (w osobnym expanderze) ---
                 with st.expander("Analiza ostatniej świecy D1"):
                     if not daily_data.empty:
-                        # Wywołanie funkcji do sprawdzenia Low ostatniej świecy
                         signal_present, signal_details = check_last_d1_low_against_confluences(daily_data, confluences_results)
 
                         if signal_present:
@@ -130,16 +123,13 @@ def main():
                             - Górna granica sygnału (+5% od środka): {signal_details['upper_signal_limit']:.2f}
                             """)
                         else:
-                            # Wyświetlanie kontekstu, nawet jeśli sygnału nie ma
                             st.info("ℹ️ Low ostatniej świecy D1 nie znajduje się w zdefiniowanej strefie sygnału konfluencji.")
-                            if confluences_results: # Sprawdź, czy były jakieś konfluencje do porównania
-                                # Pobierz dane o ostatnim Low świecy
+                            if confluences_results:
                                 last_d1_low_val = daily_data['Low'].iloc[-1] if not daily_data.empty else 'N/A'
                                 st.markdown(f"""
                                 **Aktualne dane:**
                                 - Low ostatniej świecy D1: {last_d1_low_val:.2f}
                                 """)
-                                # Pokaż zakresy pierwszej znalezionej konfluencji dla kontekstu
                                 first_conf = confluences_results[0]
                                 if 'levels' in first_conf and first_conf['levels']:
                                     min_lvl = min(item['level_value'] for item in first_conf['levels'])
@@ -156,11 +146,19 @@ def main():
                                 st.warning("Nie znaleziono żadnych konfluencji do porównania.")
                     else:
                         st.warning("Brak danych dziennych do analizy ostatniej świecy.")
-                # --- Koniec sekcji analizy świecy D1 ---
 
                 progress_bar.progress(70)
 
-                # --- Krok 5/5: Analiza zakończona ---
+                # --- Krok 11: Integracja z LLM - Wywołanie funkcji LLM po analizie technicznej ---
+                st.subheader("Analiza LLM")
+                if ai_models.client_initialized:
+                    llm_response = ai_models.analyze_fundamental_with_gpt4o(ticker)
+                    st.write("Odpowiedź LLM:")
+                    st.write(llm_response)
+                else:
+                    st.warning("Nie można wykonać analizy LLM, ponieważ połączenie z OpenAI nie zostało nawiązane.")
+                # --- Koniec sekcji integracji z LLM ---
+
                 progress_text.text("Krok 5/5: Analiza zakończona.")
                 time.sleep(1)
                 progress_bar.progress(100)
