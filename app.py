@@ -149,15 +149,62 @@ def main():
 
                 progress_bar.progress(70)
 
-                # --- Krok 11: Integracja z LLM - Wywołanie funkcji LLM po analizie technicznej ---
-                st.subheader("Analiza LLM")
-                if ai_models.client_initialized:
-                    llm_response = ai_models.analyze_fundamental_with_gpt4o(ticker)
-                    st.write("Odpowiedź LLM:")
-                    st.write(llm_response)
+                # --- Krok 12: Integracja z AI - Analiza Techniczna ---
+                st.subheader("Analiza Techniczna AI")
+
+                # Prepare data for AI analysis
+                is_overall_uptrend = d1_trend_up and w1_trend_up
+
+                relevant_confluence_details = {}
+                # Check if a signal is present and details are available from the previous step
+                if signal_present and signal_details:
+                    # Extract relevant details for the single closest confluence for the LLM
+                    # These keys are confirmed from previous codebase_investigator output
+                    relevant_confluence_details = {
+                        'last_d1_low': signal_details.get('last_d1_low'),
+                        'confluence_min_level': signal_details.get('confluence_min_level'),
+                        'confluence_max_level': signal_details.get('confluence_max_level'),
+                        'confluence_center': signal_details.get('confluence_center'),
+                        'upper_signal_limit': signal_details.get('upper_signal_limit')
+                    }
+
+                # Define the condition for sending data to LLM:
+                # Overall uptrend must be confirmed AND a relevant signal (confluence near/in) must be present.
+                # The presence of relevant_confluence_details is ensured by signal_present and signal_details check.
+                if is_overall_uptrend and signal_present:
+                    if ai_models.client_initialized:
+                        try:
+                            # Prepare data for the AI model
+                            # trend_data expects a dictionary
+                            trend_data_for_ai = {'is_uptrend': is_overall_uptrend}
+
+                            # pivots_data is the relevant confluence details
+                            pivots_data_for_ai = relevant_confluence_details if relevant_confluence_details else {}
+
+                            # Ensure we only call if we have data for the AI
+                            if pivots_data_for_ai:
+                                # This will now be a string response
+                                raw_ai_response_text = ai_models.analyze_technical_with_gpt4o_mini(
+                                    pivots_data=pivots_data_for_ai,
+                                    trend_data=trend_data_for_ai
+                                )
+
+                                # Display the raw LLM response directly
+                                st.write("Analiza Techniczna AI:")
+                                st.write(raw_ai_response_text)
+
+                            else:
+                                st.warning("Nie udało się przygotować danych o konfluencji do analizy AI.")
+
+                        except Exception as e:
+                            st.error(f"Błąd podczas analizy technicznej AI: {e}")
+                    else:
+                        st.warning("Nie można wykonać analizy AI, ponieważ połączenie z OpenAI nie zostało nawiązane.")
                 else:
-                    st.warning("Nie można wykonać analizy LLM, ponieważ połączenie z OpenAI nie zostało nawiązane.")
-                # --- Koniec sekcji integracji z LLM ---
+                    # Display a message indicating that AI analysis was skipped due to unmet conditions.
+                    st.info("Warunki do analizy technicznej AI nie zostały spełnione (wymagany trend wzrostowy i sygnał konfluencji).")
+
+                # --- Koniec sekcji integracji z AI ---
 
                 progress_text.text("Krok 5/5: Analiza zakończona.")
                 time.sleep(1)
