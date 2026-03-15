@@ -248,5 +248,4 @@ def main():
             st.warning("Proszę wprowadzić ticker akcji w panelu bocznym.")
 
 if __name__ == "__main__":
-    # The call to main() no longer includes news_data.
     main()

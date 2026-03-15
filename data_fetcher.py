@@ -1,6 +1,10 @@
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
+from curl_cffi import requests as cffi_requests
+
+
+_session = cffi_requests.Session(impersonate="chrome")
 
 
 class TickerNotFoundError(Exception):
@@ -11,7 +15,7 @@ class NoDataError(Exception):
     pass
 
 
-class TimeoutError(Exception):  # Dodana definicja TimeoutError
+class TimeoutError(Exception):
     pass
 
 
@@ -40,7 +44,8 @@ def fetch_historical_data(ticker: str) -> pd.DataFrame:
             interval='1d',
             progress=False,
             auto_adjust=False,
-            timeout=10
+            timeout=10,
+            session=_session
         )
     except Exception as e:
         raise TimeoutError(f'Timeout lub błąd połączenia dla {ticker}: {e}')
