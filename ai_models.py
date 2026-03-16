@@ -249,3 +249,91 @@ TWOJE WYJŚCIE MUSI BYĆ CZYSTYM OBIEKTEM JSON BEZ DODATKOWEGO TEKSTU PRZED LUB 
 
     except Exception as e:
         return json.dumps({"error": f"Wystąpił błąd podczas zapytania do OpenAI API dla analizy technicznej: {e}"})
+
+# NOWA FUNKCJA DO SYNTETYZOWANIA POŁĄCZONYCH ANALIZ
+def synthesize_combined_analysis(fundamental_analysis_json: str, technical_analysis_json: str) -> str:
+    '''
+    Syntetyzuje i porównuje analizę fundamentalną i techniczną, generując zintegrowany raport.
+
+    Args:
+        fundamental_analysis_json (str): Wynik analizy fundamentalnej w formacie JSON.
+        technical_analysis_json (str): Wynik analizy technicznej w formacie JSON.
+
+    Returns:
+        str: Zintegrowany raport w formacie JSON lub komunikat o błędzie.
+    '''
+    if not client_initialized:
+        return json.dumps({"error": "Klucz API OpenAI nie jest skonfigurowany. Nie można wykonać analizy."})
+
+    try:
+        # Walidacja i sparsowanie wejściowych danych JSON
+        try:
+            fundamental_data = json.loads(fundamental_analysis_json)
+            technical_data = json.loads(technical_analysis_json)
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"Błąd parsowania wejściowych danych JSON: {e}"})
+
+        # Przygotowanie promptu dla LLM
+        final_prompt = f"""
+Przeanalizuj poniższe wyniki analizy fundamentalnej (JSON A) i analizy technicznej (JSON B).
+
+JSON A (Analiza Fundamentalna):
+{fundamental_analysis_json}
+
+JSON B (Analiza Techniczna):
+{technical_analysis_json}
+
+Twoim zadaniem jest porównanie tych dwóch analiz i wygenerowanie zsyntetyzowanego raportu, który uwzględnia oba punkty widzenia. Skup się na następujących aspektach:
+
+1.  **Punkty zgodności:** Zidentyfikuj, w jakich obszarach analizy się uzupełniają lub potwierdzają (np. pozytywny sentyment fundamentalny wspierający trend wzrostowy techniczny).
+2.  **Punkty rozbieżności:** Wskaż, gdzie analizy się różnią lub sobie zaprzeczają (np. rekomendacja kupna techniczna pomimo słabych fundamentów, lub silne fundamenty przy neutralnym sygnale technicznym).
+3.  **Zintegrowany widok:** Stwórz podsumowanie, które stanowi zbalansowany obraz sytuacji, biorąc pod uwagę zarówno dane techniczne, jak i fundamentalne. Oceń, jak kluczowe mocne strony, słabości, potencjał wzrostu i ryzyka z analizy fundamentalnej wpływają na sygnały techniczne (i odwrotnie).
+4.  **Skonsolidowana rekomendacja:** Na podstawie całościowej analizy wygeneruj jedną, spójną rekomendację (np. "Kupuj z ostrożnością", "Czekaj", "Sprzedaj").
+
+Wynik musi być w formacie JSON, zawierającym następujące klucze:
+- 'agreement_points': Lista stringów opisujących punkty zgodności.
+- 'disagreement_points': Lista stringów opisujących punkty rozbieżności.
+- 'integrated_view': Krótkie podsumowanie zintegrowanego widoku sytuacji.
+- 'overall_recommendation': Zsyntetyzowana rekomendacja.
+
+Przykład struktury JSON wyjściowej:
+{{
+  "agreement_points": ["Analiza techniczna potwierdza trend wzrostowy, wspierany potencjałem wzrostu spółki."],
+  "disagreement_points": ["Pomimo rekomendacji 'Kupuj' technicznej, analiza fundamentalna wskazuje na wysokie zadłużenie i niską płynność, co rodzi ryzyko."],
+  "integrated_view": "Spółka posiada obiecujący potencjał wzrostu i silny trend wzrostowy techniczny, jednak wysokie zadłużenie i niska płynność stanowią istotne ryzyko, które wymaga monitorowania. Sugerowane jest ostrożne podejście.",
+  "overall_recommendation": "Kupuj z ostrożnością"
+}}
+
+Twoje wyjście musi być CZYSTYM OBIEKTEM JSON BEZ DODATKOWEGO TEKSTU PRZED LUB PO NIM.
+Użyj modelu 'gpt-4o-mini' do tej analizy.
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini", # Używamy gpt-4o-mini zgodnie z wcześniejszymi ustaleniami
+            messages=[
+                {"role": "system", "content": "Jesteś ekspertem od analizy finansowej, łączącym wiedzę techniczną i fundamentalną. Twoim zadaniem jest porównanie dwóch analiz i wygenerowanie zintegrowanego raportu w formacie JSON. Zwracaj tylko obiekt JSON."},
+                {"role": "user", "content": final_prompt}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000 # Zwiększona liczba tokenów dla bardziej złożonych odpowiedzi
+        )
+
+        json_output = response.choices[0].message.content.strip()
+
+        # Walidacja wyjściowego JSON-a
+        try:
+            parsed_output = json.loads(json_output)
+            # Sprawdzenie wymaganych kluczy w wyniku
+            required_keys = ['agreement_points', 'disagreement_points', 'integrated_view', 'overall_recommendation']
+            if not all(key in parsed_output for key in required_keys):
+                return json.dumps({"error": "Model nie zwrócił wszystkich wymaganych kluczy w odpowiedzi JSON.", "raw_output": json_output})
+            
+            return json.dumps(parsed_output, indent=2, ensure_ascii=False)
+
+        except json.JSONDecodeError:
+            return json.dumps({"error": "Model nie zwrócił poprawnego formatu JSON.", "raw_output": json_output})
+        except Exception as e:
+            return json.dumps({"error": f"Błąd przetwarzania odpowiedzi AI: {e}", "raw_output": json_output})
+
+    except Exception as e:
+        return json.dumps({"error": f"Wystąpił nieoczekiwany błąd podczas syntezy analiz: {e}"})

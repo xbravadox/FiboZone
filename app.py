@@ -31,6 +31,8 @@ def main():
             signal_details = None
             confluences_results = []
             d1_trend_up, w1_trend_up = False, False # Initialize trend status
+            fundamental_analysis_response = None # Initialize to None
+            json_ai_response = None # Initialize to None
 
             try:
                 progress_text.text("Krok 1/5: Pobieranie danych historycznych i przetwarzanie...")
@@ -242,7 +244,61 @@ def main():
 
             # --- Sekcja podsumowująca wyniki analizy ---
             st.subheader("Podsumowanie Analizy")
-            st.write("Tutaj pojawią się zagregowane wyniki analizy technicznej i fundamentalnej.")
+            
+            # --- NOWA SEKCJA: Synteza Połączonych Analiz ---
+            st.subheader("Zintegrowana Analiza Techniczna i Fundamentalna")
+            
+            # Check if both analyses were successfully performed and are valid JSON strings
+            fundamental_analysis_json_str = fundamental_analysis_response if isinstance(fundamental_analysis_response, str) and 'error' not in fundamental_analysis_response else None
+            technical_analysis_json_str = json_ai_response if isinstance(json_ai_response, str) and 'error' not in json_ai_response else None
+
+            if fundamental_analysis_json_str and technical_analysis_json_str:
+                try:
+                    # Call the new synthesis function
+                    combined_analysis_json_str = ai_models.synthesize_combined_analysis(
+                        fundamental_analysis_json=fundamental_analysis_json_str,
+                        technical_analysis_json=technical_analysis_json_str
+                    )
+                    
+                    # Display the combined analysis results
+                    st.write("Wynik zintegrowanej analizy AI:")
+                    try:
+                        combined_analysis_data = json.loads(combined_analysis_json_str)
+                        if "error" in combined_analysis_data:
+                            st.error(f"Błąd w zintegrowanej analizie: {combined_analysis_data['error']}")
+                            if "raw_output" in combined_analysis_data:
+                                st.json(combined_analysis_data["raw_output"])
+                        else:
+                            # Display individual components for clarity
+                            st.markdown(f"**Punkty zgodności:**")
+                            if combined_analysis_data.get('agreement_points'):
+                                for point in combined_analysis_data['agreement_points']:
+                                    st.write(f"- {point}")
+                            else:
+                                st.write("- Brak zidentyfikowanych punktów zgodności.")
+
+                            st.markdown(f"**Punkty rozbieżności:**")
+                            if combined_analysis_data.get('disagreement_points'):
+                                for point in combined_analysis_data['disagreement_points']:
+                                    st.write(f"- {point}")
+                            else:
+                                st.write("- Brak zidentyfikowanych punktów rozbieżności.")
+
+                            st.markdown(f"**Zintegrowany widok:**")
+                            st.write(combined_analysis_data.get('integrated_view', 'Brak zintegrowanego widoku.'))
+                            
+                            st.markdown(f"**Skonsolidowana rekomendacja:**")
+                            st.write(combined_analysis_data.get('overall_recommendation', 'Brak skonsolidowanej rekomendacji.'))
+
+                    except json.JSONDecodeError:
+                        st.error("Nie udało się sparsować odpowiedzi zintegrowanej analizy jako JSON.")
+                        st.json(combined_analysis_json_str) # Display raw output if parsing fails
+
+                except Exception as e:
+                    st.error(f"Wystąpił błąd podczas syntezy połączonych analiz: {e}")
+            else:
+                st.info("Nie można przeprowadzić zintegrowanej analizy. Wymagane są oba wyniki analizy fundamentalnej i technicznej.")
+            # --- Koniec sekcji Syntezy Połączonych Analiz ---
 
         else:
             st.warning("Proszę wprowadzić ticker akcji w panelu bocznym.")
