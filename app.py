@@ -125,11 +125,11 @@ def main():
                 with st.expander('🔍 Szczegóły Analizy Technicznej (Pivots, Fibo, Konfluencje)'):
                     if not pivots_df.empty:
                         st.subheader('Punkty zwrotne (Pivots)')
-                        st.dataframe(pivots_df, use_container_width=True)
+                        st.dataframe(pivots_df, width='stretch')
                         
                         if fibo_targets_dict and fibo_targets_dict.get('peak') is not None:
                             st.write('**Absolutny Szczyt (Reference High):**')
-                            st.dataframe(pd.DataFrame([fibo_targets_dict['peak']]), use_container_width=True)
+                            st.dataframe(pd.DataFrame([fibo_targets_dict['peak']]), width='stretch')
 
                             if fibo_targets_dict.get('troughs') is not None and not fibo_targets_dict['troughs'].empty:
                                 st.subheader('Wyliczone Zniesienia Fibonacciego')
@@ -144,7 +144,7 @@ def main():
                                         '61.8%': lvls.get('61.8%'),
                                         '78.6%': lvls.get('78.6%')
                                     })
-                                st.dataframe(pd.DataFrame(fibo_display), use_container_width=True)
+                                st.dataframe(pd.DataFrame(fibo_display), width='stretch')
 
                                 if confluences_results:
                                     st.subheader('Tabela Konfluencji Fibonacciego')
@@ -152,7 +152,7 @@ def main():
                                     for c in confluences_results:
                                         for l in c['levels']:
                                             conf_flat.append({'Punkty': c['total_score'], 'Poziom': l['label'], 'Cena': f"{l['level_value']:.2f}", 'Z dnia': l['trough_date'].strftime('%Y-%m-%d')})
-                                    st.dataframe(pd.DataFrame(conf_flat), use_container_width=True)
+                                    st.dataframe(pd.DataFrame(conf_flat), width='stretch')
                     
                     if signal_present:
                         st.success(f"✅ Sygnał: Low ostatniej świecy ({signal_details['last_d1_low']:.2f}) w strefie.")
